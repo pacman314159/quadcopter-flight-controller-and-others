@@ -1,19 +1,21 @@
-#include<Servo.h>
 #include "mpu6050_functions.h"
 #include "motor_manipulation.h"
 #include "bmp280_functions.h"
-#include "obj.h"
+#include "objects.h"
 
 const float PWM_BALANCE_BOUNDARY = 15.0;
-const float SIGNAL_LOSS_THRESHOLD = 930;
-const float ESC_REFRESH_RATE = 250.0; //Hz
+const int ESC_REFRESH_RATE = 250, //Hz
+          SIGNAL_LOSS_THRESHOLD = 930,
+          SAFETY_START_DURATION = 5e5, //µs
+          PWM_SAFETY_START_THRESHOLD = 1200,
+          DEFAULT_THROTTLE = 1100;
 
 //-----(RECEIVER) PIN CHANGE INTERRUPT--------
 byte rxLastState[7]; //roll - pitch - throttle - yaw - channel5 - channel6
-volatile unsigned long int rxCurrentTime = 0;
-volatile unsigned long int rxRiseEdge[7] = {0};
+volatile unsigned long rxCurrentTime = 0;
+volatile unsigned long rxRiseEdge[7] = {0};
 int rxPulseLength[7];
-void rx_interrupt_setup(){
+void receiver_setup(){ //pin change interruption
   PCICR |= B00000111; //enable PORT B, C, D
   PCMSK0 |= B00010000; //enable PCINT4 (D12) (channel 6) (PORT B)
   PCMSK1 |= B00001111; //enable PCINT8 -> PCINT11 (A0 -> A3) (channel 1 -> 4) (PORT C)
@@ -22,17 +24,16 @@ void rx_interrupt_setup(){
 
 float loopTime;
 int loopTimeMicros;
-unsigned long previousTime;
-float defaultThrottle = 1100, throttle, desiredThrottle;
+unsigned long previousTime, motorStartTime;
+float throttle, desiredThrottle;
 
 bool altitudeHoldMode, prevAltitudeHoldState;
 float pressureBMP;
 float desiredPressure, errorPressure, prevErrorPressure;
 
-PrincipalAxes angle, rate, desiredRate;
-PrincipalAxes errorRate, prevErrorRate;
-PrincipalAxes p_term, i_term, d_term, pid;
-
+PrincipalAxes angle, rate, desiredRate,
+              errorRate, prevErrorRate,
+              p_term, i_term, d_term, pid;
 //                     pitch roll yaw 
 PrincipalAxes P_gain = {1.0, 1.0, 1.0},
               I_gain = {0.0, 0.0, 0.0},
@@ -48,19 +49,8 @@ void handleElectromagnet(){
 }
 
 void precalculation(){
-  if(rxPulseLength[3] < SIGNAL_LOSS_THRESHOLD) resetBoard();
-  // for(int i = 1; i <= 6; i++){ Serial.print(rxPulseLength[i]); Serial.print(" "); } Serial.println();
-
   altitudeHoldMode = rxPulseLength[6] < 1500 ? true : false;
   desiredThrottle = 0.9 * rxPulseLength[3] - 900;
-
-  if(rxPulseLength[2] > 1500 + PWM_BALANCE_BOUNDARY)
-    desiredRate.pitch = rxPulseLength[2] - 1500 - PWM_BALANCE_BOUNDARY;
-  else if(rxPulseLength[2] < 1500 - PWM_BALANCE_BOUNDARY)
-    desiredRate.pitch = rxPulseLength[2] - 1500 + PWM_BALANCE_BOUNDARY;
-  else desiredRate.pitch = 0.0;
-  desiredRate.pitch -= angle.pitch * 15;
-  desiredRate.pitch /= 3.0;
 
   if(rxPulseLength[1] > 1500 + PWM_BALANCE_BOUNDARY)
     desiredRate.roll = rxPulseLength[1] - 1500 - PWM_BALANCE_BOUNDARY;
@@ -70,6 +60,14 @@ void precalculation(){
   desiredRate.roll -= angle.roll * 15;
   desiredRate.roll /= 3.0;
 
+  if(rxPulseLength[2] > 1500 + PWM_BALANCE_BOUNDARY)
+    desiredRate.pitch = rxPulseLength[2] - 1500 - PWM_BALANCE_BOUNDARY;
+  else if(rxPulseLength[2] < 1500 - PWM_BALANCE_BOUNDARY)
+    desiredRate.pitch = rxPulseLength[2] - 1500 + PWM_BALANCE_BOUNDARY;
+  else desiredRate.pitch = 0.0;
+  desiredRate.pitch -= angle.pitch * 15;
+  desiredRate.pitch /= 3.0;
+
   if(rxPulseLength[4] > 1500 + PWM_BALANCE_BOUNDARY)
     desiredRate.yaw = (rxPulseLength[4] - 1500 - PWM_BALANCE_BOUNDARY) / 3.0;
   else if(rxPulseLength[4] < 1500 - PWM_BALANCE_BOUNDARY)
@@ -78,19 +76,19 @@ void precalculation(){
 }
 
 void calculatePID(){
-  errorRate.pitch = rate.pitch - desiredRate.pitch;
-  p_term.pitch = P_gain.pitch * errorRate.pitch;
-  i_term.pitch += I_gain.pitch * errorRate.pitch;
-  d_term.pitch = D_gain.pitch * (errorRate.pitch - prevErrorRate.pitch);
-  pid.pitch = p_term.pitch + i_term.pitch + d_term.pitch;
-  prevErrorRate.pitch = errorRate.pitch;
-
   errorRate.roll = rate.roll - desiredRate.roll;
   p_term.roll = P_gain.roll * errorRate.roll;
   i_term.roll += I_gain.roll * errorRate.roll;
   d_term.roll = D_gain.roll * (errorRate.roll - prevErrorRate.roll);
   pid.roll = p_term.roll + i_term.roll + d_term.roll;
   prevErrorRate.roll = errorRate.roll;
+
+  errorRate.pitch = rate.pitch - desiredRate.pitch;
+  p_term.pitch = P_gain.pitch * errorRate.pitch;
+  i_term.pitch += I_gain.pitch * errorRate.pitch;
+  d_term.pitch = D_gain.pitch * (errorRate.pitch - prevErrorRate.pitch);
+  pid.pitch = p_term.pitch + i_term.pitch + d_term.pitch;
+  prevErrorRate.pitch = errorRate.pitch;
 
   errorRate.yaw = rate.yaw - desiredRate.yaw;
   p_term.yaw = P_gain.yaw * errorRate.yaw;
@@ -101,14 +99,15 @@ void calculatePID(){
 }
 
 void calculatePWM(){
-  pwmFL = pid.pitch - pid.roll - pid.yaw + throttle + defaultThrottle;
-  pwmFR = pid.pitch + pid.roll + pid.yaw + throttle + defaultThrottle;
-  pwmBL = -pid.pitch - pid.roll + pid.yaw + throttle + defaultThrottle;
-  pwmBR = -pid.pitch + pid.roll -pid.yaw + throttle + defaultThrottle;
-  pwmFL = max(pwmFL, defaultThrottle);
-  pwmFR = max(pwmFR, defaultThrottle);
-  pwmBL = max(pwmBL, defaultThrottle);
-  pwmBR = max(pwmBR, defaultThrottle);
+  pwmFL = pwmFR = pwmBL = pwmBR = DEFAULT_THROTTLE;
+  pwmFL += throttle + pid.pitch - pid.roll - pid.yaw;
+  pwmFR += throttle + pid.pitch + pid.roll + pid.yaw;
+  pwmBL += throttle - pid.pitch - pid.roll + pid.yaw;
+  pwmBR += throttle - pid.pitch + pid.roll - pid.yaw;
+  pwmFL = max(pwmFL, DEFAULT_THROTTLE);
+  pwmFR = max(pwmFR, DEFAULT_THROTTLE);
+  pwmBL = max(pwmBL, DEFAULT_THROTTLE);
+  pwmBR = max(pwmBR, DEFAULT_THROTTLE);
   // Serial.print(pwmFL); Serial.print(' '); Serial.print(pwmFR); Serial.print(' '); Serial.print(pwmBL); Serial.print(' '); Serial.println(pwmBR);
 }
 
@@ -123,6 +122,19 @@ void finalPause(){
   }
 }
 
+void handleTermination(){
+  // for(int i = 1; i <= 6; i++){ Serial.print(rxPulseLength[i]); Serial.print(" "); } Serial.println();
+  if(rxPulseLength[3] < SIGNAL_LOSS_THRESHOLD) resetBoard();
+  if(micros() - motorStartTime <= SAFETY_START_DURATION){
+    if(
+      pwmFL > PWM_SAFETY_START_THRESHOLD or
+      pwmFR > PWM_SAFETY_START_THRESHOLD or
+      pwmBL > PWM_SAFETY_START_THRESHOLD or
+      pwmBR > PWM_SAFETY_START_THRESHOLD
+    ) resetBoard();
+  }
+}
+
 void setup(){
   Serial.begin(19200);
   Wire.begin();
@@ -130,27 +142,27 @@ void setup(){
   DDRB |= B00100000; PORTB |= B00100000; //Declare D13 output then set HIGH
   DDRD |= B00100000; PORTD |= B00100000; //Declare D5 output then set HIGH for magnet
 
-  loopTime = 1.0 / ESC_REFRESH_RATE;
+  loopTime = 1.0 / (float)ESC_REFRESH_RATE;
   loopTimeMicros = loopTime * 1e6;
 
-  rx_interrupt_setup();
+  receiver_setup();
   MPU6050_setup();
   BMP280_setup();
   BMP280_calibrate();
   esc_calibrate();
 
-  Serial.println("Last chance for safty checks, pull yaw stick left to proceed routine");
+  Serial.println("Last chance for safty checks, pull yaw stick left to proceed");
   finalPause();
   Serial.println("STARTING MOTORS, PLEASE STEP ASIDE");
 
   PORTB &= B11011111; //set D13 LOW
   delay(2500);
-  motor_setup();
-  previousTime = micros();
+  motor_start();
+  previousTime = motorStartTime = micros();
 }
 
-
 void loop(){
+  handleTermination();
   handleElectromagnet();
 
   getBMPData();
@@ -164,7 +176,7 @@ void loop(){
   calculatePID();
 
   calculatePWM();
-  // createPWMPulse();
+  createPWMPulse();
 
   if(micros() - previousTime >= loopTimeMicros) PORTB |= B00100000; //turn on indicator light D13 if 250Hz loop is overwhelmed
   while(micros() - previousTime < loopTimeMicros); // guarantee 250Hz loop time 

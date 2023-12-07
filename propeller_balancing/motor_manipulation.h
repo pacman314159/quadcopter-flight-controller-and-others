@@ -10,12 +10,12 @@ extern volatile unsigned long rxCurrentTime;
 extern volatile unsigned long rxRiseEdge[7];
 extern int rxPulseLength[7];
 
-Servo motorFrontLeft, motorFrontRight, motorBackLeft, motorBackRight;
-const int BACK_RIGHT_MOTOR_PIN = 6;
-const int FRONT_RIGHT_MOTOR_PIN = 9;
-const int BACK_LEFT_MOTOR_PIN = 10;
-const int FRONT_LEFT_MOTOR_PIN = 11;
-unsigned long escLoopTime, riseEdgeTime;
+Servo motorFL, motorFR, motorBL, motorBR;
+const int BACK_RIGHT_MOTOR_PIN = 6,
+          FRONT_RIGHT_MOTOR_PIN = 9,
+          BACK_LEFT_MOTOR_PIN = 10,
+          FRONT_LEFT_MOTOR_PIN = 11;
+unsigned long currentTime, riseEdgeTime;
 unsigned long fallEdgeTimeFL, fallEdgeTimeFR, fallEdgeTimeBL, fallEdgeTimeBR;
 
 void motor_start(){
@@ -39,12 +39,12 @@ void createPWMPulse(){
   fallEdgeTimeBR = riseEdgeTime + pwmBR;
  
   while(((PORTD & B01000000) != 0) || ((PORTB & B00001110) != 0)){ //check binary values at specified indexes if they all aren't zeros
-    escLoopTime = micros();   
+    currentTime = micros();   
     //set these pins to low
-    if(escLoopTime >= fallEdgeTimeBR) PORTD &= B10111111; //D6
-    if(escLoopTime >= fallEdgeTimeFR) PORTB &= B11111101; //D9
-    if(escLoopTime >= fallEdgeTimeBL) PORTB &= B11111011; //D10
-    if(escLoopTime >= fallEdgeTimeFL) PORTB &= B11110111; //D11
+    if(currentTime >= fallEdgeTimeBR) PORTD &= B10111111; //D6
+    if(currentTime >= fallEdgeTimeFR) PORTB &= B11111101; //D9
+    if(currentTime >= fallEdgeTimeBL) PORTB &= B11111011; //D10
+    if(currentTime >= fallEdgeTimeFL) PORTB &= B11110111; //D11
   }
 }
 
@@ -64,24 +64,24 @@ void esc_calibrate(){
     if(micros() - startTime > waitTime) return; // no calibration
   }
   Serial.println("START MOTOR CALIBRATION");
-  motorFrontLeft.attach(FRONT_LEFT_MOTOR_PIN, 1000, 2000);
-  motorFrontRight.attach(FRONT_RIGHT_MOTOR_PIN, 1000, 2000);
-  motorBackLeft.attach(BACK_LEFT_MOTOR_PIN, 1000, 2000);
-  motorBackRight.attach(BACK_RIGHT_MOTOR_PIN, 1000, 2000);
-  motorFrontLeft.writeMicroseconds(2000);
-  motorFrontRight.writeMicroseconds(2000);
-  motorBackLeft.writeMicroseconds(2000); 
-  motorBackRight.writeMicroseconds(2000);
+  motorFL.attach(FRONT_LEFT_MOTOR_PIN, 1000, 2000);
+  motorFR.attach(FRONT_RIGHT_MOTOR_PIN, 1000, 2000);
+  motorBL.attach(BACK_LEFT_MOTOR_PIN, 1000, 2000);
+  motorBR.attach(BACK_RIGHT_MOTOR_PIN, 1000, 2000);
+  motorFL.writeMicroseconds(2000);
+  motorFR.writeMicroseconds(2000);
+  motorBL.writeMicroseconds(2000); 
+  motorBR.writeMicroseconds(2000);
   delay(2000);
-  motorFrontLeft.writeMicroseconds(1000);
-  motorFrontRight.writeMicroseconds(1000);
-  motorBackLeft.writeMicroseconds(1000); 
-  motorBackRight.writeMicroseconds(1000);
+  motorFL.writeMicroseconds(1000);
+  motorFR.writeMicroseconds(1000);
+  motorBL.writeMicroseconds(1000); 
+  motorBR.writeMicroseconds(1000);
   delay(3000);
-  motorFrontLeft.detach();
-  motorFrontRight.detach();
-  motorBackLeft.detach();
-  motorBackRight.detach();
+  motorFL.detach();
+  motorFR.detach();
+  motorBL.detach();
+  motorBR.detach();
   Serial.println("CALIBRATION DONE");
 }
 
