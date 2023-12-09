@@ -16,9 +16,10 @@ const float GYRO_LSB = 65.5, //131, 65.5, 32.8, 16.4
 ThreeDimensions
   GYRO_CALIBRATE = {-1.8136743, -1.1240295, 0.3688241},
   ACC_CALIBRATE = {0.0439951, -0.0162146, 0.9741866};
-ThreeDimensions acc, gyro; //imu
+extern ThreeDimensions acc;
+ThreeDimensions gyro; //imu
 
-extern PrincipalAxes angle, rate;
+PrincipalAxes angle, rate;
 
 extern float loopTime;
 

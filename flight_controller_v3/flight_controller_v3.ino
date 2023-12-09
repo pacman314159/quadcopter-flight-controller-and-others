@@ -4,10 +4,9 @@
 #include "objects.h"
 
 const float PWM_BALANCE_BOUNDARY = 15.0;
-const int ESC_REFRESH_RATE = 250, //Hz
+const int ESC_REFRESH_RATE = 200, //Hz
           SIGNAL_LOSS_THRESHOLD = 930,
-          SAFETY_START_DURATION = 5e5, //µs
-          PWM_SAFETY_START_THRESHOLD = 1200,
+          PWM_SAFETY_START_THRESHOLD = 1400,
           DEFAULT_THROTTLE = 1100;
 
 //-----(RECEIVER) PIN CHANGE INTERRUPT--------
@@ -24,7 +23,7 @@ void receiver_setup(){ //pin change interruption
 
 float loopTime;
 int loopTimeMicros;
-unsigned long previousTime, motorStartTime;
+unsigned long previousTime;
 float throttle, desiredThrottle;
 
 bool altitudeHoldMode, prevAltitudeHoldState;
@@ -35,9 +34,9 @@ PrincipalAxes angle, rate, desiredRate,
               errorRate, prevErrorRate,
               p_term, i_term, d_term, pid;
 //                     pitch roll yaw 
-PrincipalAxes P_gain = {1.0, 1.0, 1.0},
-              I_gain = {0.0, 0.0, 0.0},
-              D_gain = {0.5, 0.5, 0.5}; //constants here
+PrincipalAxes P_gain = {1.2, 1.2, 0.0},
+              I_gain = {0.02, 0.02, 0.0},
+              D_gain = {15.0, 15.0, 0.0}; //constants here
 
 float pwmFL, pwmFR, pwmBL, pwmBR;
 
@@ -50,7 +49,7 @@ void handleElectromagnet(){
 
 void precalculation(){
   altitudeHoldMode = rxPulseLength[6] < 1500 ? true : false;
-  desiredThrottle = 0.9 * rxPulseLength[3] - 900;
+  desiredThrottle = throttle = 0.9 * rxPulseLength[3] - 900;
 
   if(rxPulseLength[1] > 1500 + PWM_BALANCE_BOUNDARY)
     desiredRate.roll = rxPulseLength[1] - 1500 - PWM_BALANCE_BOUNDARY;
@@ -65,7 +64,7 @@ void precalculation(){
   else if(rxPulseLength[2] < 1500 - PWM_BALANCE_BOUNDARY)
     desiredRate.pitch = rxPulseLength[2] - 1500 + PWM_BALANCE_BOUNDARY;
   else desiredRate.pitch = 0.0;
-  desiredRate.pitch -= angle.pitch * 15;
+  desiredRate.pitch += angle.pitch * 15;
   desiredRate.pitch /= 3.0;
 
   if(rxPulseLength[4] > 1500 + PWM_BALANCE_BOUNDARY)
@@ -99,15 +98,14 @@ void calculatePID(){
 }
 
 void calculatePWM(){
-  pwmFL = pwmFR = pwmBL = pwmBR = DEFAULT_THROTTLE;
-  pwmFL += throttle + pid.pitch - pid.roll - pid.yaw;
-  pwmFR += throttle + pid.pitch + pid.roll + pid.yaw;
-  pwmBL += throttle - pid.pitch - pid.roll + pid.yaw;
-  pwmBR += throttle - pid.pitch + pid.roll - pid.yaw;
-  pwmFL = max(pwmFL, DEFAULT_THROTTLE);
-  pwmFR = max(pwmFR, DEFAULT_THROTTLE);
-  pwmBL = max(pwmBL, DEFAULT_THROTTLE);
-  pwmBR = max(pwmBR, DEFAULT_THROTTLE);
+  pwmFL = throttle + pid.pitch - pid.roll - pid.yaw + DEFAULT_THROTTLE;
+  pwmFR = throttle + pid.pitch + pid.roll + pid.yaw + DEFAULT_THROTTLE;
+  pwmBL = throttle - pid.pitch - pid.roll + pid.yaw + DEFAULT_THROTTLE;
+  pwmBR = throttle - pid.pitch + pid.roll - pid.yaw + DEFAULT_THROTTLE;
+  pwmFL = constrain(pwmFL, DEFAULT_THROTTLE, 1900);
+  pwmFR = constrain(pwmFR, DEFAULT_THROTTLE, 1900);
+  pwmBL = constrain(pwmBL, DEFAULT_THROTTLE, 1900);
+  pwmBR = constrain(pwmBR, DEFAULT_THROTTLE, 1900);
   // Serial.print(pwmFL); Serial.print(' '); Serial.print(pwmFR); Serial.print(' '); Serial.print(pwmBL); Serial.print(' '); Serial.println(pwmBR);
 }
 
@@ -119,19 +117,6 @@ void finalPause(){
     if(PINC & B00001000){ //Channel 4
       if(rxLastState[4] == 0){ rxLastState[4] = 1; rxRiseEdge[4] = rxCurrentTime; }
     }else if(rxLastState[4] == 1){ rxLastState[4] = 0; rxPulseLength[4] = rxCurrentTime - rxRiseEdge[4]; }
-  }
-}
-
-void handleTermination(){
-  // for(int i = 1; i <= 6; i++){ Serial.print(rxPulseLength[i]); Serial.print(" "); } Serial.println();
-  if(rxPulseLength[3] < SIGNAL_LOSS_THRESHOLD) resetBoard();
-  if(micros() - motorStartTime <= SAFETY_START_DURATION){
-    if(
-      pwmFL > PWM_SAFETY_START_THRESHOLD or
-      pwmFR > PWM_SAFETY_START_THRESHOLD or
-      pwmBL > PWM_SAFETY_START_THRESHOLD or
-      pwmBR > PWM_SAFETY_START_THRESHOLD
-    ) resetBoard();
   }
 }
 
@@ -153,16 +138,20 @@ void setup(){
 
   Serial.println("Last chance for safty checks, pull yaw stick left to proceed");
   finalPause();
+  MPU6050_calibrate();
   Serial.println("STARTING MOTORS, PLEASE STEP ASIDE");
 
   PORTB &= B11011111; //set D13 LOW
-  delay(2500);
+  delay(2800);
   motor_start();
-  previousTime = motorStartTime = micros();
+  previousTime = micros();
 }
 
+unsigned long start;
 void loop(){
-  handleTermination();
+  // for(int i = 1; i <= 6; i++){ Serial.print(rxPulseLength[i]); Serial.print(" "); } Serial.println();
+  if(rxPulseLength[3] < SIGNAL_LOSS_THRESHOLD) resetBoard();
+  
   handleElectromagnet();
 
   getBMPData();
@@ -178,8 +167,9 @@ void loop(){
   calculatePWM();
   createPWMPulse();
 
-  if(micros() - previousTime >= loopTimeMicros) PORTB |= B00100000; //turn on indicator light D13 if 250Hz loop is overwhelmed
-  while(micros() - previousTime < loopTimeMicros); // guarantee 250Hz loop time 
+  if(micros() - previousTime >= loopTimeMicros)
+    PORTB |= B00100000; //turn on indicator light D13 if 200Hz loop is overwhelmed
+  while(micros() - previousTime < loopTimeMicros); // guarantee 200Hz loop time 
   previousTime = micros();
 }
 

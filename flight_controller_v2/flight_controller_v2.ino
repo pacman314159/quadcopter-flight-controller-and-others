@@ -201,12 +201,14 @@ void handleElectromagnet(){
 }
 
 void loop(){
+  unsigned long start = micros();
   getDesiredState();
   getIMUData(); getCurrentAngle(); getRotationRate();
   getBMPData(); getBMPPressure();
   calculatePID(); calculatePWM();
   createPWMPulse();
   handleElectromagnet();
+  Serial.println(micros() - start);
 
   if(micros() - previousTime >= loopTimeMicros) PORTB |= B00100000; //turn on indicator light D13 if 250Hz loop is overwhelmed
   while(micros() - previousTime < loopTimeMicros); // guarantee 250Hz loop time 

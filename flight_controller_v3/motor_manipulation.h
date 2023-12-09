@@ -82,7 +82,7 @@ void esc_calibrate(){
   motorFrontRight.detach();
   motorBackLeft.detach();
   motorBackRight.detach();
-  Serial.println("CALIBRATION DONE");
+  Serial.println("MOTOR CALIBRATION DONE");
 }
 
 #endif
