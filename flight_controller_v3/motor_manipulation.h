@@ -18,6 +18,8 @@ const int FRONT_LEFT_MOTOR_PIN = 11;
 unsigned long escLoopTime, riseEdgeTime;
 unsigned long fallEdgeTimeFL, fallEdgeTimeFR, fallEdgeTimeBL, fallEdgeTimeBR;
 
+const unsigned long CALIBRATE_TIMEOUT = 5e6;
+
 void motor_start(){
   DDRD |= B01000000; // Declare D6 output
   DDRB |= B00001110; // Declare D9 D10 D11 output
@@ -50,7 +52,6 @@ void createPWMPulse(){
 
 void esc_calibrate(){
   unsigned long startTime = micros();
-  const unsigned long waitTime = 5e6;
   // Pull throttle stick to max for esc calibration
   while(rxPulseLength[3] <= 1800){
     rxCurrentTime = micros();
@@ -61,7 +62,7 @@ void esc_calibrate(){
       rxLastState[3] = 0;
       rxPulseLength[3] = rxCurrentTime - rxRiseEdge[3];
     }
-    if(micros() - startTime > waitTime) return; // no calibration
+    if(micros() - startTime > CALIBRATE_TIMEOUT) return; // no calibration
   }
   Serial.println("START MOTOR CALIBRATION");
   motorFrontLeft.attach(FRONT_LEFT_MOTOR_PIN, 1000, 2000);

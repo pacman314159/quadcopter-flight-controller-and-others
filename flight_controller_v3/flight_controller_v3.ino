@@ -38,8 +38,8 @@ PrincipalAxes angle, rate, desiredRate,
 // PrincipalAxes P_gain = {2.5, 2.5, 3.0},
 //               I_gain = {0.01, 0.01, 0.01},
 //               D_gain = {25.0, 25.0, 0.0}; //constants here
-PrincipalAxes P_gain = {0.2, 0.2, 0.0},
-              I_gain = {0.0, 0.0, 0.0},
+PrincipalAxes P_gain = {2.0, 2.0 , 3.0},
+              I_gain = {0.01, 0.01, 0.00},
               D_gain = {20.0, 20.0, 0.0}; //constants here
 
 float pwmFL, pwmFR, pwmBL, pwmBR;
@@ -136,8 +136,7 @@ void setup(){
 
   receiver_setup();
   MPU6050_setup();
-  BMP280_setup();
-  BMP280_calibrate();
+  // BMP280_setup(); BMP280_calibrate();
   esc_calibrate();
 
   Serial.println("Last chance for safty checks, pull yaw stick left to proceed");
@@ -153,7 +152,7 @@ void setup(){
 }
 
 void loop(){
-  // for(int i = 1; i <= 6; i++){ Serial.print(rxPulseLength[i]); Serial.print(" "); } Serial.println();
+  // for(int i = 1; i < 6; i++){ Serial.print(rxPulseLength[i]); Serial.print(" "); } Serial.println();
   if(rxPulseLength[3] < SIGNAL_LOSS_THRESHOLD) resetBoard();
   handleElectromagnet();
 
@@ -230,16 +229,16 @@ ISR(PCINT2_vect){
     rxPulseLength[5] = rxCurrentTime - rxRiseEdge[5];
   }
 }
-// ISR(PCINT0_vect){
-//   rxCurrentTime = micros();
-//   if(PINB & B00010000){  //Channel 6
-//     if(rxLastState[6] == 0){
-//       rxLastState[6] = 1;
-//       rxRiseEdge[6] = rxCurrentTime;
-//     }
-//   }else if(rxLastState[6] == 1){
-//     rxLastState[6] = 0;
-//     rxPulseLength[6] = rxCurrentTime - rxRiseEdge[6];
-//   }
-// }
+ISR(PCINT0_vect){
+  rxCurrentTime = micros();
+  if(PINB & B00010000){  //Channel 6
+    if(rxLastState[6] == 0){
+      rxLastState[6] = 1;
+      rxRiseEdge[6] = rxCurrentTime;
+    }
+  }else if(rxLastState[6] == 1){
+    rxLastState[6] = 0;
+    rxPulseLength[6] = rxCurrentTime - rxRiseEdge[6];
+  }
+}
 //µ

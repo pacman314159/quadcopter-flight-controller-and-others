@@ -15,8 +15,9 @@ const float GYRO_LSB = 65.5, //131, 65.5, 32.8, 16.4
 // https://invensense.tdk.com/wp-content/uploads/2015/02/MPU-6000-Register-Map1.pdf
 
 ThreeDimensions
-  GYRO_CALIBRATE = {-1.6513175, -1.1943113, 0.4746280},
-  ACC_CALIBRATE = {0.0447114, -0.0068686, -0.0244645};
+  ACC_CALIBRATE = {0.0195347, -0.0051861, -0.5137770},
+  GYRO_CALIBRATE = {-1.4462954, -1.0925269, 0.4600328};
+
 ThreeDimensions acc, gyro;
 
 extern PrincipalAxes angle, rate;
