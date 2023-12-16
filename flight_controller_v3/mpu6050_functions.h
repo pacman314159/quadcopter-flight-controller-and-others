@@ -14,49 +14,40 @@ const float GYRO_LSB = 65.5, //131, 65.5, 32.8, 16.4
             ACC_LSB = 8192.0; //16384, 8192, 4096, 2048
 // https://invensense.tdk.com/wp-content/uploads/2015/02/MPU-6000-Register-Map1.pdf
 
-// ThreeDimensions
-//   GYRO_CALIBRATE = {-1.8136743, -1.1240295, 0.3688241},
-//   ACC_CALIBRATE = {0.0439951, -0.0162146, 0.9741866};
-ThreeDimensions acc, gyro, gyroCalibration, accCalibration; //imu
+ThreeDimensions
+  GYRO_CALIBRATE = {-1.6513175, -1.1943113, 0.4746280},
+  ACC_CALIBRATE = {0.0447114, -0.0068686, -0.0244645};
+ThreeDimensions acc, gyro;
 
 extern PrincipalAxes angle, rate;
 
 extern float loopTime;
 
+float temperature;
+
 void getIMUData(bool afterCalibration = true){
   Wire.beginTransmission(MPU6050_ADDRESS);
   Wire.write(0x3B);
   Wire.endTransmission(false);
-  Wire.requestFrom(MPU6050_ADDRESS,6,true);
+  Wire.requestFrom(MPU6050_ADDRESS, 14, true);
 
   //Unit: g (1g = 9.8m/s^2)
   acc.x = (Wire.read()<<8|Wire.read()) / ACC_LSB;
   acc.y = (Wire.read()<<8|Wire.read()) / ACC_LSB;
   acc.z = (Wire.read()<<8|Wire.read()) / ACC_LSB;
-
-  Wire.beginTransmission(MPU6050_ADDRESS);
-  Wire.write(0x43) ;
-  Wire.endTransmission(false);
-  Wire.requestFrom(MPU6050_ADDRESS,6,true);
-
+  temperature = Wire.read()<<8|Wire.read();                               //Add the low and high byte to the temperature variable.
   gyro.x = (Wire.read()<<8|Wire.read()) / GYRO_LSB;
   gyro.y = (Wire.read()<<8|Wire.read()) / GYRO_LSB;
   gyro.z = (Wire.read()<<8|Wire.read()) / GYRO_LSB;
 
    if(afterCalibration){
-      gyro.x -= gyroCalibration.x;
-      gyro.y -= gyroCalibration.y; 
-      gyro.z -= gyroCalibration.z; 
-      acc.x -= accCalibration.x;
-      acc.y -= accCalibration.y;
-      acc.z -= accCalibration.z;
+      gyro.x -= GYRO_CALIBRATE.x;
+      gyro.y -= GYRO_CALIBRATE.y; 
+      gyro.z -= GYRO_CALIBRATE.z; 
+      acc.x -= ACC_CALIBRATE.x;
+      acc.y -= ACC_CALIBRATE.y;
+      acc.z -= ACC_CALIBRATE.z;
    }
-  // gyro.x -= GYRO_CALIBRATE.x;
-  // gyro.y -= GYRO_CALIBRATE.y; 
-  // gyro.z -= GYRO_CALIBRATE.z; 
-  // acc.x -= ACC_CALIBRATE.x;
-  // acc.y -= ACC_CALIBRATE.y;
-  // acc.z -= ACC_CALIBRATE.z;
 }
 
 void calculateAngle(){
@@ -89,7 +80,7 @@ void MPU6050_setup(){
 
   Wire.beginTransmission(MPU6050_ADDRESS);
   Wire.write(0x1A); //DIGITAL_LOW_PASS_FILTER_CONFIG
-  Wire.write(0x05);
+  Wire.write(0x03); //44Hz
   Wire.endTransmission(true);   
 
   Wire.beginTransmission(MPU6050_ADDRESS);
@@ -99,7 +90,7 @@ void MPU6050_setup(){
 
   Wire.beginTransmission(MPU6050_ADDRESS);
   Wire.write(0x1C); //ACCEL_CONFIG register
-  Wire.write(0x08); //00001000 (+/- 4g full scale range)
+  Wire.write(0x10); //00010000 (+/- 8g full scale range)
   Wire.endTransmission(true);   
 }
 
@@ -108,28 +99,28 @@ void MPU6050_calibrate(){
 
    for(int i = 0; i < CALIBRATION_ITERATIONS; ++i){
       getIMUData(false);
-      accCalibration.x += acc.x;
-      accCalibration.y += acc.y;
-      accCalibration.z += acc.z;
-      gyroCalibration.x += gyro.x;
-      gyroCalibration.y += gyro.y;
-      gyroCalibration.z += gyro.z;
+      ACC_CALIBRATE.x += acc.x;
+      ACC_CALIBRATE.y += acc.y;
+      ACC_CALIBRATE.z += acc.z;
+      GYRO_CALIBRATE.x += gyro.x;
+      GYRO_CALIBRATE.y += gyro.y;
+      GYRO_CALIBRATE.z += gyro.z;
       delay(10);
    }
-   accCalibration.x /= CALIBRATION_ITERATIONS;
-   accCalibration.y /= CALIBRATION_ITERATIONS;
-   accCalibration.z = (accCalibration.z / CALIBRATION_ITERATIONS) - 1.0; 
-   gyroCalibration.x /= CALIBRATION_ITERATIONS;
-   gyroCalibration.y /= CALIBRATION_ITERATIONS;
-   gyroCalibration.z /= CALIBRATION_ITERATIONS;
+   ACC_CALIBRATE.x /= CALIBRATION_ITERATIONS;
+   ACC_CALIBRATE.y /= CALIBRATION_ITERATIONS;
+   ACC_CALIBRATE.z = (ACC_CALIBRATE.z / CALIBRATION_ITERATIONS) - 1.0; 
+   GYRO_CALIBRATE.x /= CALIBRATION_ITERATIONS;
+   GYRO_CALIBRATE.y /= CALIBRATION_ITERATIONS;
+   GYRO_CALIBRATE.z /= CALIBRATION_ITERATIONS;
 
    Serial.println("MPU6050 CALIBRATION DONE");
-   Serial.print("acc x: "); Serial.println(accCalibration.x, 7);
-   Serial.print("acc y: "); Serial.println(accCalibration.y, 7);
-   Serial.print("acc z: "); Serial.println(accCalibration.z, 7);
-   Serial.print("gyro x: "); Serial.println(gyroCalibration.x, 7);
-   Serial.print("gyro y: "); Serial.println(gyroCalibration.y, 7);
-   Serial.print("gyro z: "); Serial.println(gyroCalibration.z, 7);
+   Serial.print("acc x: "); Serial.println(ACC_CALIBRATE.x, 7);
+   Serial.print("acc y: "); Serial.println(ACC_CALIBRATE.y, 7);
+   Serial.print("acc z: "); Serial.println(ACC_CALIBRATE.z, 7);
+   Serial.print("gyro x: "); Serial.println(GYRO_CALIBRATE.x, 7);
+   Serial.print("gyro y: "); Serial.println(GYRO_CALIBRATE.y, 7);
+   Serial.print("gyro z: "); Serial.println(GYRO_CALIBRATE.z, 7);
 }
 
 #endif

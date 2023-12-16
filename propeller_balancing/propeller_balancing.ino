@@ -89,14 +89,18 @@ void loop(){
     getIMUData();
 
     normAcc = sqrt(acc.x*acc.x + acc.y*acc.y + acc.z*acc.z);
-    normAcc_sum -= normAcc_array[normAcc_index];
-    normAcc_array[normAcc_index] = normAcc;  
-    normAcc_sum += normAcc_array[normAcc_index];
-    normAcc_avg = normAcc_sum / NUM_ACCELEROMETER_SAMPLES;
-    if(normAcc_index == NUM_ACCELEROMETER_SAMPLES - 1) normAcc_index = 0;
-    else ++normAcc_index;
+    // normAcc_sum -= normAcc_array[normAcc_index];
+    // normAcc_array[normAcc_index] = normAcc;  
+    // normAcc_sum += normAcc_array[normAcc_index];
+    // normAcc_avg = normAcc_sum / NUM_ACCELEROMETER_SAMPLES;
+    // if(normAcc_index == NUM_ACCELEROMETER_SAMPLES - 1) normAcc_index = 0;
+    // else ++normAcc_index;
 
-    Serial.println(normAcc_avg * 100);
+    Serial.print(0);
+    Serial.print(" ");
+    Serial.print(10);
+    Serial.print(" ");
+    Serial.println(normAcc * 100);
 
     switch(data){
       case '1': pwmFL = rxPulseLength[3]; break;

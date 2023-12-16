@@ -13,5 +13,9 @@ struct PrincipalAxes{
   float yaw;
 };
 
+struct FourMotors{
+
+}
+
 #endif
 
