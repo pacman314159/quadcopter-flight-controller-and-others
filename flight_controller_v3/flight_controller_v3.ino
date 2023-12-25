@@ -39,7 +39,7 @@ PrincipalAxes angle, rate, desiredRate,
 //               I_gain = {0.01, 0.01, 0.01},
 //               D_gain = {25.0, 25.0, 0.0}; //constants here
 PrincipalAxes P_gain = {2.0, 2.0 , 3.0},
-              I_gain = {0.01, 0.01, 0.00},
+              I_gain = {0.02, 0.02, 0.00},
               D_gain = {20.0, 20.0, 0.0}; //constants here
 
 float pwmFL, pwmFR, pwmBL, pwmBR;
